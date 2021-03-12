@@ -1,6 +1,6 @@
 package main
 
-func NewInMamoryPlayerStore() *InMemoryPlayerStore {
+func NewInMemoryPlayerStore() *InMemoryPlayerStore {
 	return &InMemoryPlayerStore{map[string]int{}}
 }
 
