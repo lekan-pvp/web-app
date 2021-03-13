@@ -1,27 +1,80 @@
 package main
 
 import (
-	"io"
+	"encoding/json"
+	"fmt"
+	"os"
 )
 
+// FileSystemPlayerStore stores players in the filesystem.
 type FileSystemPlayerStore struct {
-	database io.ReadSeeker
+	database *json.Encoder
+	league   League
 }
 
-func (f *FileSystemPlayerStore) GetLeague() []Player {
-	f.database.Seek(0, 0)
-	league, _ := NewLeague(f.database)
-	return league
-}
+func initialisePlayerDBFile(file *os.File) error {
+	file.Seek(0, 0)
+	info, err := file.Stat()
 
-func (f *FileSystemPlayerStore) GetPlayerScore(name string) int {
-	var wins int
-
-	for _, player := range f.GetLeague() {
-		if player.Name == name {
-			wins = player.Wins
-			break
-		}
+	if err != nil {
+		return fmt.Errorf("problem getting file info from file %s, %v", file.Name(), err)
 	}
-	return wins
+
+	if info.Size() == 0 {
+		file.Write([]byte("[]"))
+		file.Seek(0, 0)
+	}
+
+	return nil
+}
+
+// NewFileSystemPlayerStore creates a FileSystemPlayerStore.
+func NewFileSystemPlayerStore(file *os.File) (*FileSystemPlayerStore, error) {
+
+	err := initialisePlayerDBFile(file)
+
+	if err != nil {
+		return nil, fmt.Errorf("problem initialising player db file, %v", err)
+	}
+
+	league, err := NewLeague(file)
+
+	if err != nil {
+		return nil, fmt.Errorf("problem loading player store from file %s, %v", file.Name(), err)
+	}
+
+	return &FileSystemPlayerStore{
+		database: json.NewEncoder(&tape{file}),
+		league:   league,
+	}, nil
+}
+
+// GetLeague returns the scores of all the players.
+func (f *FileSystemPlayerStore) GetLeague() League {
+	return f.league
+}
+
+// GetPlayerScore retrieves a player's score.
+func (f *FileSystemPlayerStore) GetPlayerScore(name string) int {
+
+	player := f.league.Find(name)
+
+	if player != nil {
+		return player.Wins
+	}
+
+	return 0
+}
+
+// RecordWin will store a win for a player, incrementing wins if already known.
+func (f *FileSystemPlayerStore) RecordWin(name string) {
+	player := f.league.Find(name)
+
+	if player != nil {
+		player.Wins++
+	} else {
+		f.league = append(f.league, Player{name, 1})
+	}
+
+	f.database.Encode(f.league)
 }
